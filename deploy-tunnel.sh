@@ -712,14 +712,12 @@ optimize_kernel() {
 # TCP/UDP Buffer Sizes
 # ============================================
 # Increase socket buffer sizes for better throughput
-net.core.rmem_default = 1048576
-net.core.rmem_max = 16777216
-net.core.wmem_default = 1048576
-net.core.wmem_max = 16777216
-net.ipv4.tcp_rmem = 4096 1048576 16777216
-net.ipv4.tcp_wmem = 4096 1048576 16777216
-net.ipv4.udp_rmem_min = 8192
-net.ipv4.udp_wmem_min = 8192
+net.core.rmem_default = 4194304
+net.core.rmem_max = 33554432
+net.core.wmem_default = 4194304
+net.core.wmem_max = 33554432
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
 
 # ============================================
 # Connection Handling
@@ -1043,13 +1041,13 @@ list_tunnels() {
             
             case "$status" in
                 active)
-                    echo -e "${GREEN}●${NC} $service_name"
+                    echo -e "${GREEN}● ${service_name}${NC}"
                     ;;
                 inactive)
-                    echo -e "${RED}○${NC} $service_name"
+                    echo -e "${RED}○ ${service_name}${NC}"
                     ;;
                 *)
-                    echo -e "${YELLOW}?${NC} $service_name"
+                    echo -e "${YELLOW}? ${service_name}${NC}"
                     ;;
             esac
             echo -e "    Status:  $status"
@@ -1772,7 +1770,7 @@ get_multi_client_input() {
     echo -e "\n  Performance Modes:"
     echo -e "  ${WHITE}1) fast (Recommended)${NC}"
     echo -e "  ${WHITE}2) fast2 (More aggressive)${NC}"
-    echo -e "  ${WHITE}3) fast3 (Most aggressive)${NC}"
+    echo -e "  ${WHITE}3) fast3 (Most aggressive - can consume more bandwidth)${NC}"
     echo -e "  ${WHITE}4) manual (Custom low-level parameters)${NC}"
     read -p "Choose KCP mode (1-4, default: 1): " kcpResponse
     
@@ -1802,6 +1800,7 @@ get_multi_client_input() {
     
     echo -e "\n${YELLOW}MTU Configuration:${NC}"
     echo -e "  Default: 1350 (Recommended for most networks)"
+    echo -e "  Lower values (1200-1300) may help with unstable connections"
     read -p "Enter MTU value (default: 1350): " response
     if [ -n "$response" ]; then
         MTU=$(echo "$response" | tr -d '[:space:]')
@@ -1915,7 +1914,7 @@ get_multi_server_input() {
     echo -e "\n  Performance Modes:"
     echo -e "  ${WHITE}1) fast (Recommended)${NC}"
     echo -e "  ${WHITE}2) fast2 (More aggressive)${NC}"
-    echo -e "  ${WHITE}3) fast3 (Most aggressive)${NC}"
+    echo -e "  ${WHITE}3) fast3 (Most aggressive - can consume more bandwidth)${NC}"
     echo -e "  ${WHITE}4) manual (Custom low-level parameters)${NC}"
     read -p "Choose KCP mode (1-4, default: 1): " kcpResponse
     
@@ -1945,6 +1944,7 @@ get_multi_server_input() {
     
     echo -e "\n${YELLOW}MTU Configuration:${NC}"
     echo -e "  Default: 1350 (Recommended for most networks)"
+    echo -e "  Lower values (1200-1300) may help with unstable connections"
     read -p "Enter MTU value (default: 1350): " response
     if [ -n "$response" ]; then
         MTU=$(echo "$response" | tr -d '[:space:]')
