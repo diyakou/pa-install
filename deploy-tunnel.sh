@@ -91,6 +91,60 @@ set_kcp_defaults() {
     fi
 }
 
+apply_kcp_mode_defaults() {
+    local role="$1"
+    local mode="$2"
+
+    case "$mode" in
+        fast2)
+            # High speed with lower overhead than fast3.
+            KCP_NODELAY=1
+            KCP_INTERVAL=20
+            KCP_RESEND=2
+            KCP_NC=1
+            if [ "$role" = "server" ]; then
+                KCP_RCVWND=2048
+                KCP_SNDWND=2048
+            else
+                KCP_RCVWND=1024
+                KCP_SNDWND=1024
+            fi
+            KCP_SMUXBUF=4194304
+            KCP_STREAMBUF=2097152
+            ;;
+        fast3)
+            KCP_NODELAY=1
+            KCP_INTERVAL=10
+            KCP_RESEND=2
+            KCP_NC=1
+            if [ "$role" = "server" ]; then
+                KCP_RCVWND=4096
+                KCP_SNDWND=4096
+            else
+                KCP_RCVWND=2048
+                KCP_SNDWND=2048
+            fi
+            KCP_SMUXBUF=8388608
+            KCP_STREAMBUF=4194304
+            ;;
+        fast|*)
+            KCP_NODELAY=0
+            KCP_INTERVAL=30
+            KCP_RESEND=2
+            KCP_NC=1
+            if [ "$role" = "server" ]; then
+                KCP_RCVWND=2048
+                KCP_SNDWND=2048
+            else
+                KCP_RCVWND=1024
+                KCP_SNDWND=1024
+            fi
+            KCP_SMUXBUF=4194304
+            KCP_STREAMBUF=2097152
+            ;;
+    esac
+}
+
 apply_kcp_preset() {
     local preset="$1"
     local role="$2"
@@ -889,7 +943,7 @@ transport:
     nodelay: $KCP_NODELAY         # Whether to enable nodelay mode
     interval: $KCP_INTERVAL       # Protocol internal work interval (ms)
     resend: $KCP_RESEND           # Fast resend parameter
-    nc: $KCP_NC                   # Whether to disable flow control
+    nocongestion: $KCP_NC         # Whether to disable congestion control
 
     rcvwnd: $KCP_RCVWND           # Receive window size (increase for high throughput)
     sndwnd: $KCP_SNDWND           # Receive window size (increase for high throughput)
@@ -968,7 +1022,7 @@ transport:
     nodelay: $KCP_NODELAY         # Whether to enable nodelay mode
     interval: $KCP_INTERVAL       # Protocol internal work interval (ms)
     resend: $KCP_RESEND           # Fast resend parameter
-    nc: $KCP_NC                   # Whether to disable flow control
+    nocongestion: $KCP_NC         # Whether to disable congestion control
 
     rcvwnd: $KCP_RCVWND           # Receive window size (increase for high throughput)
     sndwnd: $KCP_SNDWND           # Receive window size (increase for high throughput)
@@ -1866,7 +1920,7 @@ FORWARD_PORTS=""  # User input format: "443=443,8443=8080"
 ENCRYPTION_KEY=""
 PAQET_PATH="."
 KCP_MODE="fast"
-CONN_COUNT="5"
+CONN_COUNT="3"
 MTU="1350"
 KCP_NODELAY=1
 KCP_INTERVAL=10
@@ -2161,7 +2215,7 @@ get_single_tunnel_input() {
             esac
             echo -e "  ${GREEN}Manual preset applied.${NC}"
         else
-            set_kcp_defaults "client"
+            apply_kcp_mode_defaults "client" "$KCP_MODE"
         fi
 
         # Get MTU
@@ -2234,7 +2288,7 @@ get_single_tunnel_input() {
             esac
             echo -e "  ${GREEN}Manual preset applied.${NC}"
         else
-            set_kcp_defaults "server"
+            apply_kcp_mode_defaults "server" "$KCP_MODE"
         fi
         
         # Get MTU for server
@@ -2319,7 +2373,7 @@ get_multi_client_input() {
         esac
         echo -e "  ${GREEN}Manual preset applied.${NC}"
     else
-        set_kcp_defaults "client"
+        apply_kcp_mode_defaults "client" "$KCP_MODE"
     fi
     
     echo -e "\n${YELLOW}MTU Configuration:${NC}"
@@ -2463,7 +2517,7 @@ get_multi_server_input() {
         esac
         echo -e "  ${GREEN}Manual preset applied.${NC}"
     else
-        set_kcp_defaults "server"
+        apply_kcp_mode_defaults "server" "$KCP_MODE"
     fi
     
     echo -e "\n${YELLOW}MTU Configuration:${NC}"
