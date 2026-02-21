@@ -77,17 +77,17 @@ print_info() {
 set_kcp_defaults() {
     local role="$1"
     KCP_NODELAY=1
-    KCP_INTERVAL=10
+    KCP_INTERVAL=20
     KCP_RESEND=2
     KCP_NC=1
     KCP_SMUXBUF=4194304
     KCP_STREAMBUF=2097152
     if [ "$role" = "server" ]; then
-        KCP_RCVWND=4096
-        KCP_SNDWND=4096
-    else
         KCP_RCVWND=2048
         KCP_SNDWND=2048
+    else
+        KCP_RCVWND=1024
+        KCP_SNDWND=1024
     fi
 }
 
@@ -924,7 +924,7 @@ network:
   
   # PCAP settings
   pcap:
-    sockbuf: 4194304             # 4MB buffer for client
+        sockbuf: $CLIENT_PCAP_SOCKBUF             # PCAP buffer for client
 
 # Server connection settings (Kharej server)
 server:
@@ -1007,7 +1007,7 @@ network:
   
   # PCAP settings
   pcap:
-    sockbuf: 8388608                    # 8MB buffer for server
+        sockbuf: $SERVER_PCAP_SOCKBUF                    # PCAP buffer for server
 
 # Transport protocol configuration
 transport:
@@ -1919,17 +1919,19 @@ FORWARD_RULES=""  # Semicolon-separated: "local:target_host:target_port[:protoco
 FORWARD_PORTS=""  # User input format: "443=443,8443=8080"
 ENCRYPTION_KEY=""
 PAQET_PATH="."
-KCP_MODE="fast"
+KCP_MODE="fast2"
 CONN_COUNT="3"
-MTU="1350"
+MTU="1280"
 KCP_NODELAY=1
-KCP_INTERVAL=10
+KCP_INTERVAL=20
 KCP_RESEND=2
 KCP_NC=1
-KCP_RCVWND=2048
-KCP_SNDWND=2048
+KCP_RCVWND=1024
+KCP_SNDWND=1024
 KCP_SMUXBUF=4194304
 KCP_STREAMBUF=2097152
+CLIENT_PCAP_SOCKBUF="4194304"
+SERVER_PCAP_SOCKBUF="8388608"
 
 # Check for CLI management commands FIRST (before parsing deployment options)
 # These commands are handled by handle_cli_args() at the end of the script
@@ -2188,17 +2190,18 @@ get_single_tunnel_input() {
         fi
 
         echo -e "\n  Performance Modes:"
-        echo -e "  ${WHITE}1) fast (Recommended)${NC}"
+        echo -e "  ${WHITE}1) fast${NC}"
         echo -e "  ${WHITE}2) fast2 (More aggressive)${NC}"
         echo -e "  ${WHITE}3) fast3 (Most aggressive - very high bandwidth usage)${NC}"
         echo -e "  ${WHITE}4) manual (Custom low-level parameters)${NC}"
-        read -p "Choose KCP mode (1-4, default: 1): " kcpResponse
+        read -p "Choose KCP mode (1-4, default: 2): " kcpResponse
         
         case "$kcpResponse" in
+            1) KCP_MODE="fast" ;;
             2) KCP_MODE="fast2" ;;
             3) KCP_MODE="fast3" ;;
             4) KCP_MODE="manual" ;;
-            *) KCP_MODE="fast" ;;
+            *) KCP_MODE="fast2" ;;
         esac
         echo -e "  ${GREEN}Selected Mode: $KCP_MODE${NC}"
 
@@ -2220,9 +2223,9 @@ get_single_tunnel_input() {
 
         # Get MTU
         echo -e "\n${YELLOW}MTU Configuration:${NC}"
-        echo -e "  Default: 1350 (Recommended for most networks)"
+        echo -e "  Default: 1280 (Recommended for most networks)"
         echo -e "  Lower values (1200-1300) may help with unstable connections"
-        read -p "Enter MTU value (default: 1350): " response
+        read -p "Enter MTU value (default: 1280): " response
         if [ -n "$response" ]; then
             MTU=$(echo "$response" | tr -d '[:space:]')
         fi
@@ -2261,17 +2264,18 @@ get_single_tunnel_input() {
         echo -e "  ${GREEN}Connection count: $CONN_COUNT${NC}"
         
         echo -e "\n  Performance Modes:"
-        echo -e "  ${WHITE}1) fast (Recommended)${NC}"
+        echo -e "  ${WHITE}1) fast${NC}"
         echo -e "  ${WHITE}2) fast2 (More aggressive)${NC}"
         echo -e "  ${WHITE}3) fast3 (Most aggressive - very high bandwidth usage)${NC}"
         echo -e "  ${WHITE}4) manual (Custom low-level parameters)${NC}"
-        read -p "Choose KCP mode (1-4, default: 1): " kcpResponse
+        read -p "Choose KCP mode (1-4, default: 2): " kcpResponse
         
         case "$kcpResponse" in
+            1) KCP_MODE="fast" ;;
             2) KCP_MODE="fast2" ;;
             3) KCP_MODE="fast3" ;;
             4) KCP_MODE="manual" ;;
-            *) KCP_MODE="fast" ;;
+            *) KCP_MODE="fast2" ;;
         esac
         echo -e "  ${GREEN}Selected Mode: $KCP_MODE${NC}"
 
@@ -2293,9 +2297,9 @@ get_single_tunnel_input() {
         
         # Get MTU for server
         echo -e "\n${YELLOW}MTU Configuration:${NC}"
-        echo -e "  Default: 1350 (Recommended for most networks)"
+        echo -e "  Default: 1280 (Recommended for most networks)"
         echo -e "  Lower values (1200-1300) may help with unstable connections"
-        read -p "Enter MTU value (default: 1350): " response
+        read -p "Enter MTU value (default: 1280): " response
         if [ -n "$response" ]; then
             MTU=$(echo "$response" | tr -d '[:space:]')
         fi
@@ -2346,17 +2350,18 @@ get_multi_client_input() {
     echo -e "  ${GREEN}Connection count: $CONN_COUNT${NC}"
     
     echo -e "\n  Performance Modes:"
-    echo -e "  ${WHITE}1) fast (Recommended)${NC}"
+    echo -e "  ${WHITE}1) fast${NC}"
     echo -e "  ${WHITE}2) fast2 (More aggressive)${NC}"
     echo -e "  ${WHITE}3) fast3 (Most aggressive - very high bandwidth usage)${NC}"
     echo -e "  ${WHITE}4) manual (Custom low-level parameters)${NC}"
-    read -p "Choose KCP mode (1-4, default: 1): " kcpResponse
+    read -p "Choose KCP mode (1-4, default: 2): " kcpResponse
     
     case "$kcpResponse" in
+        1) KCP_MODE="fast" ;;
         2) KCP_MODE="fast2" ;;
         3) KCP_MODE="fast3" ;;
         4) KCP_MODE="manual" ;;
-        *) KCP_MODE="fast" ;;
+        *) KCP_MODE="fast2" ;;
     esac
     echo -e "  ${GREEN}Selected Mode: $KCP_MODE${NC}"
 
@@ -2377,9 +2382,9 @@ get_multi_client_input() {
     fi
     
     echo -e "\n${YELLOW}MTU Configuration:${NC}"
-    echo -e "  Default: 1350 (Recommended for most networks)"
+    echo -e "  Default: 1280 (Recommended for most networks)"
     echo -e "  Lower values (1200-1300) may help with unstable connections"
-    read -p "Enter MTU value (default: 1350): " response
+    read -p "Enter MTU value (default: 1280): " response
     if [ -n "$response" ]; then
         MTU=$(echo "$response" | tr -d '[:space:]')
     fi
@@ -2490,17 +2495,18 @@ get_multi_server_input() {
     echo -e "  ${GREEN}Connection count: $CONN_COUNT${NC}"
     
     echo -e "\n  Performance Modes:"
-    echo -e "  ${WHITE}1) fast (Recommended)${NC}"
+    echo -e "  ${WHITE}1) fast${NC}"
     echo -e "  ${WHITE}2) fast2 (More aggressive)${NC}"
     echo -e "  ${WHITE}3) fast3 (Most aggressive - very high bandwidth usage)${NC}"
     echo -e "  ${WHITE}4) manual (Custom low-level parameters)${NC}"
-    read -p "Choose KCP mode (1-4, default: 1): " kcpResponse
+    read -p "Choose KCP mode (1-4, default: 2): " kcpResponse
     
     case "$kcpResponse" in
+        1) KCP_MODE="fast" ;;
         2) KCP_MODE="fast2" ;;
         3) KCP_MODE="fast3" ;;
         4) KCP_MODE="manual" ;;
-        *) KCP_MODE="fast" ;;
+        *) KCP_MODE="fast2" ;;
     esac
     echo -e "  ${GREEN}Selected Mode: $KCP_MODE${NC}"
 
@@ -2521,9 +2527,9 @@ get_multi_server_input() {
     fi
     
     echo -e "\n${YELLOW}MTU Configuration:${NC}"
-    echo -e "  Default: 1350 (Recommended for most networks)"
+    echo -e "  Default: 1280 (Recommended for most networks)"
     echo -e "  Lower values (1200-1300) may help with unstable connections"
-    read -p "Enter MTU value (default: 1350): " response
+    read -p "Enter MTU value (default: 1280): " response
     if [ -n "$response" ]; then
         MTU=$(echo "$response" | tr -d '[:space:]')
     fi
