@@ -399,6 +399,106 @@ set_smart_tunnel_profile() {
     fi
 }
 
+resolve_ipv4_for_mtu_probe() {
+    local host="$1"
+    host=$(echo "$host" | tr -d '[:space:]')
+    host="${host#[}"
+    host="${host%]}"
+
+    if [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "$host"
+        return
+    fi
+
+    local resolved=""
+    if command -v getent >/dev/null 2>&1; then
+        resolved=$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1 {print $1; exit}')
+    elif command -v dig >/dev/null 2>&1; then
+        resolved=$(dig +short A "$host" 2>/dev/null | head -1)
+    fi
+
+    if [[ "$resolved" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "$resolved"
+        return
+    fi
+
+    echo ""
+}
+
+probe_path_mtu_payload_ipv4() {
+    local target_ip="$1"
+    local low=1172
+    local high=1472
+    local best=0
+    local mid=0
+
+    if ! command -v ping >/dev/null 2>&1; then
+        echo ""
+        return
+    fi
+
+    if ! ping -h 2>&1 | grep -q -- '-M'; then
+        echo ""
+        return
+    fi
+
+    while [ "$low" -le "$high" ]; do
+        mid=$(((low + high) / 2))
+        if ping -4 -c 1 -W 1 -M do -s "$mid" "$target_ip" >/dev/null 2>&1; then
+            best="$mid"
+            low=$((mid + 1))
+        else
+            high=$((mid - 1))
+        fi
+    done
+
+    if [ "$best" -le 0 ]; then
+        echo ""
+        return
+    fi
+
+    echo "$best"
+}
+
+auto_tune_client_mtu_by_server() {
+    if [ "$MODE" != "client" ]; then
+        return
+    fi
+
+    if [ "$MTU_EXPLICIT" = "yes" ]; then
+        print_info "MTU provided explicitly; skipping destination-based MTU probe."
+        return
+    fi
+
+    local target_ip=""
+    local payload_mtu=""
+    local path_mtu=0
+    local computed_mtu=0
+
+    target_ip=$(resolve_ipv4_for_mtu_probe "$SERVER_ADDRESS")
+    if [ -z "$target_ip" ]; then
+        print_warning "Could not resolve IPv4 for '$SERVER_ADDRESS'; keeping MTU=$MTU"
+        return
+    fi
+
+    print_info "Probing path MTU toward server destination ($target_ip)..."
+    payload_mtu=$(probe_path_mtu_payload_ipv4 "$target_ip")
+    if ! [[ "$payload_mtu" =~ ^[0-9]+$ ]]; then
+        print_warning "Path MTU probe failed; keeping MTU=$MTU"
+        return
+    fi
+
+    path_mtu=$((payload_mtu + 28))
+
+    # KCP payload travels as crafted TCP payload over raw IPv4 packets.
+    # Keep room for IPv4+TCP(+options) and a small safety margin.
+    computed_mtu=$((path_mtu - 68))
+    computed_mtu=$(clamp_int "$computed_mtu" 1100 1400)
+
+    MTU="$computed_mtu"
+    print_success "Auto MTU tuned for destination ${SERVER_ADDRESS}: path_mtu=$path_mtu -> kcp.mtu=$MTU"
+}
+
 print_smart_profile_summary() {
     print_success "Smart profile: $SMART_PROFILE_NAME"
     print_info "Max online users: $MAX_ONLINE_USERS"
@@ -655,7 +755,7 @@ resolve_paqet_binary() {
 
 # Get latest paqet release tag from GitHub API
 get_latest_paqet_version() {
-    local repo="diyakou/paqet"
+    local repo="${PAQET_REPO:-diyakou/paqet}"
     local api_url="https://api.github.com/repos/${repo}/releases/latest"
     local version=""
 
@@ -1147,10 +1247,14 @@ download_paqet_binary() {
 
     print_info "Detected: $os-$paqet_arch"
 
-    # Get latest version from GitHub API
-    print_info "Checking latest version..."
-    local version
-    version=$(get_latest_paqet_version)
+    # Get version from override or GitHub API
+    local version="${PAQET_VERSION:-}"
+    if [ -n "$version" ]; then
+        print_info "Using pinned core version: $version"
+    else
+        print_info "Checking latest version..."
+        version=$(get_latest_paqet_version)
+    fi
 
     if [ -z "$version" ]; then
         if [ "$force_update" = "true" ]; then
@@ -1164,7 +1268,7 @@ download_paqet_binary() {
         print_info "Latest version: $version"
     fi
 
-    local repo="diyakou/paqet"
+    local repo="${PAQET_REPO:-diyakou/paqet}"
     local filename="paqet-linux-${paqet_arch}-${version}.tar.gz"
     local download_url="https://github.com/${repo}/releases/download/$version/$filename"
 
@@ -2386,9 +2490,11 @@ FORWARD_PORTS=""  # User input format: "443=443,8443=8080"
 ENCRYPTION_KEY=""
 PAQET_PATH="."
 PAQET_REPO="diyakou/paqet"
+PAQET_VERSION=""
 KCP_MODE="manual"
 CONN_COUNT="3"
 MTU="1280"
+MTU_EXPLICIT="no"
 MAX_ONLINE_USERS="50"
 SMART_PROFILE_NAME="balanced"
 SYSTEM_CPU_CORES="1"
@@ -2452,6 +2558,14 @@ if [[ $# -gt 0 ]]; then
                         ENCRYPTION_KEY="$2"
                         shift 2
                         ;;
+                    --core-repo)
+                        PAQET_REPO="$2"
+                        shift 2
+                        ;;
+                    --core-version)
+                        PAQET_VERSION="$2"
+                        shift 2
+                        ;;
                     --proxy-type)
                         PROXY_TYPE="$2"
                         shift 2
@@ -2486,6 +2600,7 @@ if [[ $# -gt 0 ]]; then
                         ;;
                     --mtu)
                         MTU="$2"
+                        MTU_EXPLICIT="yes"
                         shift 2
                         ;;
                     *)
@@ -2571,6 +2686,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mtu)
             MTU="$2"
+            MTU_EXPLICIT="yes"
             shift 2
             ;;
         *)
@@ -2658,6 +2774,7 @@ get_single_tunnel_input() {
         
         echo -e "\n${YELLOW}Smart Connection Tuning:${NC}"
         ask_max_online_users_and_apply_profile "client"
+        auto_tune_client_mtu_by_server
 
         # Get encryption key
         echo -e "\n${YELLOW}Encryption Key:${NC}"
@@ -2906,6 +3023,8 @@ deploy_multi_tunnels() {
             FORWARD_RULES="${TUNNEL_FORWARD_RULES[$i]}"
             ENCRYPTION_KEY="${TUNNEL_KEYS[$i]}"
             PROXY_TYPE="forward"
+
+            auto_tune_client_mtu_by_server
 
             validate_forward_rules || return 1
             create_client_config "$config_file"
@@ -3840,6 +3959,8 @@ handle_cli_args() {
             echo "  --errors            View recent errors"
             echo "  --optimize          Apply kernel/OS optimizations for tunneling"
             echo "  --update-core       Download and install latest paqet core binary"
+            echo "  --core-version TAG  Pin core version/tag for downloads/updates"
+            echo "  --core-repo REPO    Core release repo (default: diyakou/paqet)"
             echo "  --update            Alias for --update-core"
             echo "  --install           Install script to /usr/local/bin (run as 'paqet')"
             echo "  --uninstall         Remove script from /usr/local/bin"
