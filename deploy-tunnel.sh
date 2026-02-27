@@ -807,7 +807,14 @@ run_kernel_upgrade() {
 }
 
 run_selected_system_actions() {
-    if [ "$APPLY_KERNEL_OPTIMIZATION" = "yes" ]; then
+    # Always apply tunnel kernel tuning on server deployments.
+    # This avoids missed optimization prompts and improves stability under load.
+    if [ "$MODE" = "server" ]; then
+        if [ "$APPLY_KERNEL_OPTIMIZATION" != "yes" ]; then
+            print_info "Server mode detected: applying kernel/OS tunnel optimizations automatically."
+        fi
+        optimize_kernel
+    elif [ "$APPLY_KERNEL_OPTIMIZATION" = "yes" ]; then
         optimize_kernel
     fi
 
